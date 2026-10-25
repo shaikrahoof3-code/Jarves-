@@ -1,0 +1,8 @@
+.env
+.token
+cert.pem
+key.pem
+memory.md
+__pycache__/
+workspace/*
+!workspace/.keep

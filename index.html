@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jarvis</title>
+<style>
+:root{
+  --bg:#0b1020; --panel:#141b33; --line:#27325c; --text:#e8ecf8; --muted:#a3aed0;
+  --accent:#4fd1ff; --on-accent:#06101f; --ok:#46d39a; --bad:#ff7a88;
+  --s1:8px; --s2:16px; --s3:24px; --s4:32px; --r:16px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:18px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  display:flex;flex-direction:column;align-items:center;
+  padding:max(var(--s3),env(safe-area-inset-top)) max(var(--s3),env(safe-area-inset-right)) max(var(--s3),env(safe-area-inset-bottom)) max(var(--s3),env(safe-area-inset-left));}
+.wrap{width:100%;max-width:880px;height:100%;display:flex;flex-direction:column;gap:var(--s3);min-height:0}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2)}
+h1{margin:0;font-size:28px;letter-spacing:.14em;font-weight:600}
+.checks{display:flex;flex-wrap:wrap;gap:var(--s1)}
+.chip{display:inline-flex;gap:6px;align-items:center;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:15px;color:var(--muted)}
+.chip b{font-weight:700}
+.chip.ok b{color:var(--ok)} .chip.bad b{color:var(--bad)}
+.stage{display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s2) 0}
+.orb{width:clamp(120px,22vw,176px);aspect-ratio:1;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#bff0ff,var(--accent) 38%,#1a5f8a 72%,#0e2a45);
+  box-shadow:0 0 0 1px var(--line);filter:saturate(.2) brightness(.55);transition:filter .5s,box-shadow .5s}
+body[data-state=awake] .orb{filter:none;box-shadow:0 0 64px 8px rgba(79,209,255,.45);animation:breathe 3.2s ease-in-out infinite}
+body.busy .orb{animation:spin 1.1s linear infinite;background:conic-gradient(from 0deg,var(--accent),#0e2a45,var(--accent))}
+body.listening .orb{box-shadow:0 0 0 6px rgba(70,211,154,.55),0 0 64px 8px rgba(79,209,255,.45)}
+@keyframes breathe{50%{transform:scale(1.05)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.orb{animation:none!important}}
+#status{margin:0;color:var(--muted);text-align:center;min-height:27px}
+#log{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--s1);padding:var(--s2);background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.msg{max-width:85%;padding:12px 16px;border-radius:var(--r);white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.you{align-self:flex-end;background:var(--accent);color:var(--on-accent)}
+.msg.jarvis{align-self:flex-start;background:#1d2747}
+.msg.note{align-self:center;color:var(--muted);font-size:16px;text-align:center}
+form{display:flex;gap:var(--s1)}
+input[type=text]{flex:1;min-width:0;height:56px;padding:0 var(--s2);border-radius:var(--r);border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+input[type=text]:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button{height:56px;min-width:56px;padding:0 var(--s3);border-radius:var(--r);border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+#modal{position:fixed;inset:0;background:rgba(5,8,18,.8);display:flex;align-items:center;justify-content:center;padding:var(--s3)}
+.card{max-width:560px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.card h2{margin:0;font-size:22px}
+code{display:block;padding:var(--s2);background:var(--bg);border-radius:12px;overflow-wrap:anywhere;font-size:16px}
+.row{display:flex;gap:var(--s1);justify-content:flex-end}
+</style>
+</head>
+<body data-state="asleep">
+<div class="wrap">
+  <header>
+    <h1>JARVIS</h1>
+    <div class="checks" id="checks" aria-live="polite"></div>
+  </header>
+
+  <section class="stage">
+    <div class="orb" aria-hidden="true"></div>
+    <p id="status">Checking everything first…</p>
+    <div class="row">
+      <button id="mic" class="primary" disabled>Enable microphone</button>
+      <button id="mute" aria-pressed="false">Voice replies: on</button>
+    </div>
+  </section>
+
+  <div id="log" role="log" aria-live="polite"></div>
+
+  <form id="form">
+    <input type="text" id="text" placeholder="Type here, or say “Wake up Jarvis”" autocomplete="off" disabled>
+    <button class="primary" id="send" disabled>Send</button>
+  </form>
+</div>
+
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mt">
+  <div class="card">
+    <h2 id="mt">Jarvis wants to run a command</h2>
+    <code id="cmd"></code>
+    <div class="row"><button id="deny">Deny</button><button id="allow" class="primary">Allow</button></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let awake = false, micOn = false, speaking = false, voice = true, rec = null, busy = false, ready = false;
+
+const log = (who, text) => { const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text; $('#log').append(d); d.scrollIntoView({block: 'end'}); };
+const api = async (path, body) => (await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {})).json();
+
+function setAwake(a) {
+  awake = a; document.body.dataset.state = a ? 'awake' : 'asleep';
+  $('#status').textContent = a ? 'Awake. I am listening.' : 'Asleep. Say or type “Wake up Jarvis”.';
+}
+
+async function checkHealth() {
+  const h = await api('/api/health');
+  $('#checks').replaceChildren(...h.checks.map(c => {
+    const s = document.createElement('span'); s.className = 'chip ' + (c.ok ? 'ok' : 'bad');
+    s.innerHTML = '<b>' + (c.ok ? '✓' : '✗') + '</b>'; s.append(' ' + c.name + (c.ok || !c.hint ? '' : ': ' + c.hint));
+    return s;
+  }));
+  ready = h.ready;
+  $('#mic').disabled = !ready; $('#text').disabled = !ready; $('#send').disabled = !ready;
+  if (ready) { setAwake(awake); } else { $('#status').textContent = 'Fix the red items above, then reload this page. Microphone stays locked until everything works.'; }
+}
+
+function say(t) {
+  if (!voice || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(t);
+  u.onstart = () => { speaking = true; };
+  u.onend = u.onerror = () => { speaking = false; };
+  speechSynthesis.speak(u);
+}
+
+function askApproval(id, cmd) {
+  return new Promise(res => {
+    $('#cmd').textContent = cmd; $('#modal').hidden = false; $('#allow').focus();
+    const done = ok => { $('#modal').hidden = true; api('/api/approve', {id, ok}).then(res); };
+    $('#allow').onclick = () => done(true); $('#deny').onclick = () => done(false);
+  });
+}
+
+async function send(text, typed) {
+  text = text.trim(); if (!text || busy || !ready) return;
+  busy = true; document.body.classList.add('busy'); log('you', text);
+  try {
+    const {job} = await api('/api/say', {text});
+    for (;;) {
+      const j = await api('/api/job?id=' + job);
+      if (j.status === 'approval') await askApproval(job, j.cmd);
+      else if (j.status === 'done') {
+        setAwake(j.awake);
+        if (j.reply) { log('jarvis', j.reply); say(j.reply); }
+        else if (typed) log('note', 'I am asleep. Say or type “Wake up Jarvis” first.');
+        break;
+      }
+      await new Promise(r => setTimeout(r, 600));
+    }
+  } catch (e) { log('note', 'Lost connection to Jarvis. Is the terminal still running?'); }
+  busy = false; document.body.classList.remove('busy');
+}
+
+async function enableMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance(''));  // unlocks voice replies on iPad
+  if (!window.isSecureContext) { log('note', 'This browser only allows the microphone on https or localhost. On iPad, restart Jarvis with:  python jarvis.py --lan --https   or use the keyboard microphone key in the text box.'); return; }
+  if (!SR) { log('note', 'This browser has no speech recognition. Use the text box (the keyboard microphone key works too).'); return; }
+  try { (await navigator.mediaDevices.getUserMedia({audio: true})).getTracks().forEach(t => t.stop()); }
+  catch (e) { log('note', 'Microphone permission was not given. You can allow it in the browser settings, or just type.'); return; }
+  rec = new SR(); rec.continuous = true; rec.interimResults = false; rec.lang = 'en-IN';
+  rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) {
+    if (!e.results[i].isFinal || speaking) continue;
+    const t = e.results[i][0].transcript;
+    if (awake || /wake up/i.test(t)) send(t, false);  // while asleep nothing else leaves the browser to Jarvis
+  } };
+  rec.onstart = () => document.body.classList.add('listening');
+  rec.onend = () => { document.body.classList.remove('listening'); if (micOn) try { rec.start(); } catch (e) {} };
+  rec.onerror = e => { if (e.error === 'not-allowed') { micOn = false; $('#mic').textContent = 'Enable microphone'; log('note', 'Speech recognition was blocked.'); } };
+  micOn = true; rec.start(); $('#mic').textContent = 'Turn microphone off';
+}
+
+$('#mic').onclick = () => { if (micOn) { micOn = false; rec.stop(); $('#mic').textContent = 'Enable microphone'; } else enableMic(); };
+$('#mute').onclick = e => { voice = !voice; if (!voice) speechSynthesis.cancel(); e.target.textContent = 'Voice replies: ' + (voice ? 'on' : 'off'); e.target.setAttribute('aria-pressed', !voice); };
+$('#form').onsubmit = e => { e.preventDefault(); const t = $('#text').value; $('#text').value = ''; send(t, true); };
+
+log('note', 'The microphone is off. It turns on only after every check passes and you tap “Enable microphone”.');
+checkHealth();
+</script>
+</body>
+</html>
